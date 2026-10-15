@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kerst Piano">
+<title>We Wish You a Merry Christmas</title>
+<style>
+  :root { --bg:#FFFDF7; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:#222;
+    font-family:-apple-system, "Avenir Next", system-ui, sans-serif;
+    touch-action:manipulation; -webkit-user-select:none; user-select:none; overflow:hidden; }
+  body { display:flex; flex-direction:column; height:100dvh;
+    padding:max(8px, env(safe-area-inset-top)) 14px max(6px, env(safe-area-inset-bottom)); }
+
+  header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 2px 8px; flex-wrap:wrap; }
+  h1 { font-size:clamp(18px, 2.5vw, 28px); margin:0; color:#B71C1C; }
+  .controls { display:flex; gap:10px; flex-wrap:wrap; }
+  .group { display:flex; align-items:center; background:#fff; border-radius:999px; box-shadow:0 1px 4px #0002; overflow:hidden; }
+  .group button { border:0; background:none; padding:10px 14px; font:inherit; font-size:16px; color:#222; }
+  .group button.on { background:#2E7D32; color:#fff; }
+  .group button:disabled { opacity:.35; }
+  #tempoVal { min-width:74px; text-align:center; font-weight:700; }
+
+  #sheetViewport { position:relative; flex:0 0 auto; height:44vh; overflow:hidden; background:#fff;
+    border-radius:16px; box-shadow:0 2px 10px #0001; }
+  #sheet { transition:transform .5s ease; }
+  .lineWrap { height:22vh; }
+  .lineWrap svg { width:100%; height:100%; display:block; }
+  #countdown { position:absolute; inset:0; display:grid; place-items:center; font-size:22vh; font-weight:900;
+    color:#2E7D32; opacity:0; pointer-events:none; text-shadow:0 4px 0 #fff; }
+  #countdown.pop { animation:pop .45s ease-out forwards; }
+  @keyframes pop { 0% { opacity:0; transform:scale(.6); } 25% { opacity:.9; transform:scale(1.05); } 100% { opacity:0; transform:scale(1); } }
+
+  #bottom { flex:1; display:flex; align-items:center; justify-content:space-between; gap:18px; padding-top:10px; min-height:0; }
+  .big { flex:0 0 auto; width:min(17vh,150px); height:min(17vh,150px); border-radius:50%; border:0; color:#fff;
+    font:inherit; font-weight:800; font-size:clamp(14px,2.3vh,22px); line-height:1.1; box-shadow:0 6px 0 #0003; }
+  .big:active { transform:translateY(3px); box-shadow:0 3px 0 #0003; }
+  .big:disabled { opacity:.35; }
+  .start { background:#2E7D32; }
+  .stop { background:#D32F2F; }
+
+  #keyboard { position:relative; flex:1; max-width:780px; height:100%; max-height:34vh; display:flex; }
+  .key { --c:#fff; --t:#222; }
+  .key.white { flex:1; position:relative; display:flex; flex-direction:column; justify-content:flex-end; align-items:center;
+    padding-bottom:10px; background:linear-gradient(#fff, #f1f1f1); border:2px solid #333; border-left-width:1px;
+    border-right-width:1px; border-radius:0 0 10px 10px; transition:background .15s; }
+  .key.black { position:absolute; top:0; width:7.6%; height:60%; z-index:2; display:flex; justify-content:center;
+    align-items:flex-end; padding-bottom:8px; background:linear-gradient(#444, #111); border-radius:0 0 6px 6px; }
+  .dot { width:min(5.4vw,46px); aspect-ratio:1; border-radius:50%; background:var(--c); color:var(--t);
+    display:grid; place-items:center; font-weight:800; font-size:clamp(14px,2.3vw,24px); box-shadow:inset 0 0 0 2px #0002; }
+  .black .dot { width:84%; font-size:clamp(10px,1.4vw,14px); }
+  .hint1 .key.target { animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow:0 0 0 3px var(--c), 0 0 10px var(--c); } 50% { box-shadow:0 0 0 6px var(--c), 0 0 26px var(--c); } }
+  .key.white.heard-ok { background:#C8E6C9; }
+  .key.white.heard-bad { background:#FFCDD2; }
+  .key.black.heard-ok { background:#2E7D32; }
+  .key.black.heard-bad { background:#C62828; }
+  .key.white.heard-plain { background:#E3F2FD; }
+  .key.black.heard-plain { background:#1565C0; }
+
+  #status { display:flex; align-items:center; gap:10px; height:26px; font-size:14px; color:#666; }
+  #micBtn { border:0; background:#fff; border-radius:999px; padding:3px 10px; box-shadow:0 1px 3px #0002; font:inherit; font-size:14px; }
+  #level { width:80px; height:8px; background:#eee; border-radius:4px; overflow:hidden; }
+  #levelFill { height:100%; width:0; background:#43A047; }
+  #heard { font-weight:700; color:#222; }
+  #debugInfo { margin-left:auto; font-family:ui-monospace, monospace; font-size:12px; }
+
+  /* Bladmuziek (SVG) */
+  .staff { stroke:#222; stroke-width:1.3; }
+  .bar { stroke:#222; stroke-width:1.6; }
+  .bar.thick { stroke-width:5; }
+  .stem { stroke:#111; stroke-width:1.7; }
+  .beam { fill:#111; }
+  .ledger { stroke:#222; stroke-width:1.6; }
+  .clef { font-size:64px; fill:#111; font-family:"Apple Symbols","Noto Music","Segoe UI Symbol",serif; }
+  .keysig { font-size:30px; fill:#111; }
+  .timesig { font-size:28px; font-weight:800; fill:#111; font-family:Georgia, serif; text-anchor:middle; }
+  .lyric { font-size:16px; fill:#333; text-anchor:middle; }
+  .hl { fill:#FFF1A8; opacity:0; transition:opacity .12s; }
+  .hl.active { opacity:1; }
+  .head { fill:#111; }
+  .hint1 .head, .hint2 .head { fill:var(--c); stroke:#0007; stroke-width:.9; }
+  .hollow .head { fill:#fff; stroke:#111; stroke-width:2.2; }
+  .hint1 .hollow .head, .hint2 .hollow .head { fill:#fff; stroke:var(--c); stroke-width:3.2; }
+  .note.active .head { stroke:#000; stroke-width:2.6; }
+  .dotmark { fill:#111; }
+  .bubble { display:none; transition:transform .15s ease; }
+  .hint1 .bubble { display:inline; }
+  .bubble circle { fill:var(--c); stroke:#0003; stroke-width:1; }
+  .bubble text { fill:var(--t); font-weight:800; text-anchor:middle; dominant-baseline:central; }
+  .bubbleWrap.active .bubble { transform:scale(1.5); }
+  .bubbleWrap.done .bubble { opacity:.45; }
+  .shaker.shake { animation:shake .3s; }
+  @keyframes shake { 0%,100% { transform:translateX(0); } 25% { transform:translateX(-5px); } 75% { transform:translateX(5px); } }
+  .mark { font-size:15px; font-weight:900; text-anchor:middle; }
+  .mark.ok { fill:#2E7D32; } .mark.retry { fill:#EF6C00; } .mark.bad { fill:#C62828; }
+
+  /* Resultaat */
+  .overlay { position:fixed; inset:0; background:#0006; display:grid; place-items:center; z-index:10; }
+  .overlay[hidden] { display:none; }
+  .card { background:#fff; border-radius:24px; padding:28px 36px; text-align:center; max-width:520px; box-shadow:0 10px 40px #0004; }
+  #stars { font-size:64px; letter-spacing:6px; }
+  .card h2 { margin:6px 0 10px; font-size:30px; }
+  .card p { font-size:20px; margin:8px 0; }
+  #resTip { color:#2E7D32; font-weight:700; }
+  .card button { margin-top:14px; border:0; background:#2E7D32; color:#fff; font:inherit; font-size:22px; font-weight:800;
+    padding:12px 40px; border-radius:999px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎄 We Wish You a Merry Christmas</h1>
+  <div class="controls">
+    <div class="group" id="modeGroup">
+      <button data-mode="listen">🎧 Luister</button>
+      <button data-mode="wait">🐢 Wacht op mij</button>
+      <button data-mode="tempo">🎵 Met maat</button>
+    </div>
+    <div class="group">
+      <button id="slower" aria-label="Langzamer">−</button>
+      <span id="tempoVal"></span>
+      <button id="faster" aria-label="Sneller">+</button>
+    </div>
+    <div class="group" id="hintGroup">
+      <button data-hint="1">Veel hulp</button>
+      <button data-hint="2">Beetje hulp</button>
+      <button data-hint="3">Zelf lezen</button>
+    </div>
+  </div>
+</header>
+
+<div id="sheetViewport">
+  <div id="sheet"></div>
+  <div id="countdown"></div>
+</div>
+
+<div id="bottom">
+  <button id="btnStart" class="big start">START</button>
+  <div id="keyboard"></div>
+  <button id="btnStop" class="big stop">STOP</button>
+</div>
+
+<div id="status">
+  <button id="micBtn">🎤 Test microfoon</button>
+  <div id="level"><div id="levelFill"></div></div>
+  <span id="statusText"></span>
+  <span id="heard"></span>
+  <span id="debugInfo"></span>
+</div>
+
+<div id="result" class="overlay" hidden>
+  <div class="card">
+    <div id="stars"></div>
+    <h2 id="resTitle"></h2>
+    <p id="resLine"></p>
+    <p id="resBest"></p>
+    <p id="resTip"></p>
+    <button id="resOk">OK</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ===================== Liedje =====================
+// [noot, tellen, lettergreep]  — F majeur, 3/4, begint met opmaat op tel 3.
+const SONG = [
+  ['C4',1,'We'],
+  ['F4',1,'wish'], ['F4',.5,'you'], ['G4',.5,'a'], ['F4',.5,'Mer-'], ['E4',.5,'ry'],
+  ['D4',1,'Christ-'], ['D4',1,'mas,'], ['D4',1,'we'],
+  ['G4',1,'wish'], ['G4',.5,'you'], ['A4',.5,'a'], ['G4',.5,'Mer-'], ['F4',.5,'ry'],
+  ['E4',1,'Christ-'], ['C4',1,'mas,'], ['C4',1,'we'],
+  ['A4',1,'wish'], ['A4',.5,'you'], ['Bb4',.5,'a'], ['A4',.5,'Mer-'], ['G4',.5,'ry'],
+  ['F4',1,'Christ-'], ['D4',1,'mas'], ['C4',.5,'and'], ['C4',.5,'a'],
+  ['D4',1,'hap-'], ['G4',1,'py'], ['E4',1,'new'],
+  ['F4',2,'year.'], ['C4',1,'Good'],
+  ['F4',1,'ti-'], ['F4',1,'dings'], ['F4',1,'we'],
+  ['E4',2,'bring'], ['E4',1,'to'],
+  ['F4',1,'you'], ['E4',1,'and'], ['D4',1,'your'],
+  ['C4',2,'kin,'], ['G4',1,'good'],
+  ['A4',1,'ti-'], ['G4',1,'dings'], ['F4',1,'for'],
+  ['C5',1,'Christ-'], ['C4',1,'mas'], ['C4',.5,'and'], ['C4',.5,'a'],
+  ['D4',1,'hap-'], ['G4',1,'py'], ['E4',1,'new'],
+  ['F4',3,'year!'],
+];
+const LINES = [[0,4],[5,8],[9,12],[13,16]];   // maten per regel (maat 0 = opmaat)
+const BEATS_PER_MEASURE = 3;
+const PICKUP_POS = 2;                           // opmaat valt op tel 3 (index 2)
+
+const PC = {C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,Bb:10,B:11};
+const LETTER_STEP = {C:0,D:1,E:2,F:3,G:4,A:5,B:6};
+// Kleuren per toonklasse (Boomwhacker-achtig). Gebruik dezelfde kleuren voor de stickers.
+const STYLE = {
+  0:{label:'C',  c:'#E53935', t:'#fff'},
+  2:{label:'D',  c:'#EF6C00', t:'#fff'},
+  4:{label:'E',  c:'#FDD835', t:'#222'},
+  5:{label:'F',  c:'#43A047', t:'#fff'},
+  7:{label:'G',  c:'#00ACC1', t:'#fff'},
+  9:{label:'A',  c:'#7E57C2', t:'#fff'},
+  10:{label:'Bes',c:'#F48FB1', t:'#222'},
+  11:{label:'B', c:'#AD1457', t:'#fff'},
+};
+
+function parseNote(s) {
+  const m = s.match(/^([A-G])(b|#)?(\d)$/);
+  const letter = m[1], key = letter + (m[2] || ''), oct = +m[3];
+  return { key, midi: 12 * (oct + 1) + PC[key], pc: PC[key], step: (oct - 4) * 7 + LETTER_STEP[letter] };
+}
+
+let pos = PICKUP_POS;
+const notes = SONG.map(([n, beats, lyric], i) => {
+  const o = { ...parseNote(n), i, beats, lyric, songBeat: pos - PICKUP_POS,
+              measure: Math.floor(pos / BEATS_PER_MEASURE), inMeasure: pos % BEATS_PER_MEASURE };
+  pos += beats;
+  return o;
+});
+const TOTAL_BEATS = pos - PICKUP_POS;
+notes.forEach(n => n.line = LINES.findIndex(([a, b]) => n.measure >= a && n.measure <= b));
+
+// ===================== Bladmuziek tekenen =====================
+const NS = 'http://www.w3.org/2000/svg';
+const VB_W = 1000, VB_H = 180, GAP = 12, STAFF_TOP = 72, STAFF_BOT = STAFF_TOP + 4 * GAP;
+const BUBBLE_Y = 24, LYRIC_Y = 168, MARK_Y = 150, STEM = 3.5 * GAP;
+const yOf = step => STAFF_BOT - (step - 2) * GAP / 2;
+
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+const noteEls = [];   // per noot: { g, hl, bubbleWrap, shaker, mark, topLayer }
+
+function buildSheet() {
+  const sheet = document.getElementById('sheet');
+  LINES.forEach(([ma, mb], li) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'lineWrap';
+    const svg = el('svg', { viewBox: `0 0 ${VB_W} ${VB_H}`, preserveAspectRatio: 'xMidYMid meet' }, wrap);
+    const hlLayer = el('g', {}, svg);
+    for (let k = 0; k < 5; k++) el('line', { x1: 10, x2: VB_W - 10, y1: STAFF_TOP + k * GAP, y2: STAFF_TOP + k * GAP, class: 'staff' }, svg);
+    el('line', { x1: 10, x2: 10, y1: STAFF_TOP, y2: STAFF_BOT, class: 'bar' }, svg);
+    el('text', { x: 14, y: STAFF_BOT + 10, class: 'clef' }, svg, '𝄞');
+    el('text', { x: 62, y: yOf(6) + 10, class: 'keysig' }, svg, '♭');   // bes-voorteken op de B-lijn
+    let headerW = 88;
+    if (li === 0) {
+      el('text', { x: 100, y: STAFF_TOP + 2 * GAP - 3, class: 'timesig' }, svg, '3');
+      el('text', { x: 100, y: STAFF_BOT - 3, class: 'timesig' }, svg, '4');
+      headerW = 120;
+    }
+
+    const ms = [];
+    for (let m = ma; m <= mb; m++) ms.push(m);
+    // Niet-lineaire spatiëring (zoals bij gegraveerd notenschrift): korte noten relatief meer ruimte,
+    // zodat de bolletjes boven achtste noten niet overlappen.
+    const WEIGHT = { 0.5: 0.75, 1: 1, 2: 1.45, 3: 1.8 };
+    const lineNotes = notes.filter(n => n.line === li);
+    const mWeight = m => lineNotes.filter(n => n.measure === m).reduce((s, n) => s + WEIGHT[n.beats], 0);
+    const PADL = 20, PADR = 12;
+    const totalWeight = ms.reduce((s, m) => s + mWeight(m), 0);
+    const unit = (VB_W - 10 - headerW - ms.length * (PADL + PADR)) / totalWeight;
+    const mX = {};
+    let x = headerW;
+    ms.forEach(m => {
+      mX[m] = x;
+      x += PADL + mWeight(m) * unit + PADR;
+      const last = m === LINES[LINES.length - 1][1];
+      if (last) {
+        el('line', { x1: x - 8, x2: x - 8, y1: STAFF_TOP, y2: STAFF_BOT, class: 'bar' }, svg);
+        el('line', { x1: x - 2, x2: x - 2, y1: STAFF_TOP, y2: STAFF_BOT, class: 'bar thick' }, svg);
+      } else {
+        el('line', { x1: x, x2: x, y1: STAFF_TOP, y2: STAFF_BOT, class: 'bar' }, svg);
+      }
+    });
+
+    const offset = {};
+    lineNotes.forEach(n => {
+      const o = offset[n.measure] || 0;
+      n.x = mX[n.measure] + PADL + o + 8;
+      n.y = yOf(n.step);
+      n.w = WEIGHT[n.beats] * unit;   // breedte van deze noot op de regel
+      offset[n.measure] = o + n.w;
+    });
+
+    // achtsten per tel paren (balk)
+    const beamPartner = {};
+    lineNotes.forEach((n, k) => {
+      const nx = lineNotes[k + 1];
+      if (n.beats === .5 && nx && nx.beats === .5 && nx.measure === n.measure &&
+          Math.floor(n.inMeasure) === Math.floor(nx.inMeasure) && n.inMeasure % 1 === 0) {
+        beamPartner[n.i] = nx.i; beamPartner[nx.i] = n.i;
+        const beamY = Math.min(n.y, nx.y) - STEM;
+        n.beamY = nx.beamY = beamY;
+        el('rect', { x: n.x + 6.6, y: beamY - 2.5, width: nx.x - n.x + 1.6, height: 5, class: 'beam' }, svg);
+      }
+    });
+
+    const topLayer = el('g', {}, svg);
+    lineNotes.forEach(n => {
+      const st = STYLE[n.pc];
+      const hollow = n.beats >= 2;
+      const vars = `--c:${st.c};--t:${st.t}`;
+      const hl = el('rect', { x: n.x - 15, y: STAFF_TOP - 16, width: Math.max(n.w - 2, 28),
+                              height: MARK_Y + 8 - (STAFF_TOP - 16), rx: 8, class: 'hl' }, hlLayer);
+      const g = el('g', { class: 'note' + (hollow ? ' hollow' : ''), style: vars }, svg);
+
+      // hulplijnen
+      for (let s = 0; s >= n.step; s -= 2) el('line', { x1: n.x - 12, x2: n.x + 12, y1: yOf(s), y2: yOf(s), class: 'ledger' }, g);
+      for (let s = 8; s <= n.step; s += 2) el('line', { x1: n.x - 12, x2: n.x + 12, y1: yOf(s), y2: yOf(s), class: 'ledger' }, g);
+
+      // stok
+      if (n.beats < 3) {
+        if (beamPartner[n.i] != null) {
+          el('line', { x1: n.x + 6.6, x2: n.x + 6.6, y1: n.y - 1, y2: n.beamY, class: 'stem' }, g);
+        } else if (n.step < 6) {
+          el('line', { x1: n.x + 6.6, x2: n.x + 6.6, y1: n.y - 1, y2: n.y - STEM, class: 'stem' }, g);
+        } else {
+          el('line', { x1: n.x - 6.6, x2: n.x - 6.6, y1: n.y + 1, y2: n.y + STEM, class: 'stem' }, g);
+        }
+      }
+      el('ellipse', { cx: n.x, cy: n.y, rx: 7.6, ry: 5.6, transform: `rotate(-20 ${n.x} ${n.y})`, class: 'head' }, g);
+      if (n.beats === 3) {
+        const onLine = (n.step - 2) % 2 === 0;
+        el('circle', { cx: n.x + 14, cy: n.y - (onLine ? 3 : 0), r: 2.4, class: 'dotmark' }, g);
+      }
+      el('text', { x: n.x, y: LYRIC_Y, class: 'lyric' }, svg, n.lyric);
+      const mark = el('text', { x: n.x, y: MARK_Y, class: 'mark' }, svg, '');
+
+      // bolletje met kleur + letter (bovenop, zodat een vergroot bolletje over de buren valt)
+      const bubbleWrap = el('g', { transform: `translate(${n.x} ${BUBBLE_Y})`, class: 'bubbleWrap', style: vars }, topLayer);
+      const shaker = el('g', { class: 'shaker' }, bubbleWrap);
+      const bubble = el('g', { class: 'bubble' }, shaker);
+      el('circle', { r: 15 }, bubble);
+      el('text', { 'font-size': st.label.length > 1 ? 11.5 : 18 }, bubble, st.label);
+
+      noteEls[n.i] = { g, hl, bubbleWrap, shaker, mark, topLayer };
+    });
+    sheet.appendChild(wrap);
+  });
+}
+
+// ===================== Keyboard op scherm =====================
+const WHITE = [60, 62, 64, 65, 67, 69, 71, 72];
+const BLACK = [[61, 0], [63, 1], [66, 3], [68, 4], [70, 5]];   // [midi, na witte toets index]
+const keyEls = {};
+
+function buildKeyboard() {
+  const kb = document.getElementById('keyboard');
+  const mk = (midi, cls) => {
+    const k = document.createElement('div');
+    k.className = 'key ' + cls;
+    const st = STYLE[midi % 12];
+    if (st && !(cls === 'black' && midi % 12 !== 10)) {
+      k.style.setProperty('--c', st.c);
+      k.style.setProperty('--t', st.t);
+      const d = document.createElement('div');
+      d.className = 'dot';
+      d.textContent = st.label;
+      k.appendChild(d);
+    }
+    k.addEventListener('pointerdown', e => { e.preventDefault(); onKeyTap(midi); });
+    keyEls[midi] = k;
+    return k;
+  };
+  WHITE.forEach(m => kb.appendChild(mk(m, 'white')));
+  BLACK.forEach(([m, after]) => {
+    const k = mk(m, 'black');
+    k.style.left = `calc(${((after + 1) / WHITE.length) * 100}% - 3.8%)`;
+    kb.appendChild(k);
+  });
+}
+
+function keyForPc(pc, preferMidi) {
+  if (preferMidi != null && preferMidi % 12 === pc) return keyEls[preferMidi];
+  return keyEls[60 + pc];
+}
+function flashKey(pc, kind, preferMidi) {
+  const k = keyForPc(pc, preferMidi);
+  if (!k) return;
+  k.classList.remove('heard-ok', 'heard-bad', 'heard-plain');
+  void k.offsetWidth;
+  k.classList.add('heard-' + kind);
+  clearTimeout(k._t);
+  k._t = setTimeout(() => k.classList.remove('heard-' + kind), 350);
+}
+let targetKey = null;
+function setTargetKey(n) {
+  if (targetKey) targetKey.classList.remove('target');
+  targetKey = n ? keyEls[n.midi] : null;
+  if (targetKey) targetKey.classList.add('target');
+}
+
+// ===================== Audio =====================
+let ac = null, noiseBuf = null;
+const scheduled = [];   // geplande geluiden, zodat STOP ze kan afbreken
+
+function ensureAudio() {
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    noiseBuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.05), ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  if (ac.state === 'suspended') ac.resume();
+  return ac;
+}
+function track(src, end) { scheduled.push({ src, end }); }
+function stopScheduled() {
+  const now = ac ? ac.currentTime : 0;
+  for (const s of scheduled) if (s.end > now) { try { s.src.stop(); } catch (e) {} }
+  scheduled.length = 0;
+}
+// Tik zonder toonhoogte (ruis), zodat de toonherkenning hem niet als noot oppikt.
+function click(time, accent, vol = 1) {
+  const src = ac.createBufferSource();
+  src.buffer = noiseBuf;
+  const hp = ac.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = accent ? 2000 : 3500;
+  const g = ac.createGain();
+  g.gain.setValueAtTime((accent ? 0.9 : 0.55) * vol, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
+  src.connect(hp).connect(g).connect(ac.destination);
+  src.start(time);
+  src.stop(time + 0.05);
+  track(src, time + 0.05);
+}
+function tone(midi, time, dur, vol = 0.22) {
+  const f = 440 * Math.pow(2, (midi - 69) / 12);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, time);
+  g.gain.linearRampToValueAtTime(vol, time + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, time + dur + 0.25);
+  g.connect(ac.destination);
+  [[f, 'triangle', 1], [f * 2, 'sine', 0.25]].forEach(([fr, type, amp]) => {
+    const o = ac.createOscillator();
+    o.type = type;
+    o.frequency.value = fr;
+    const og = ac.createGain();
+    og.gain.value = amp;
+    o.connect(og).connect(g);
+    o.start(time);
+    o.stop(time + dur + 0.3);
+    track(o, time + dur + 0.3);
+  });
+}
+
+// ===================== Microfoon + toonherkenning =====================
+const DEBUG = new URLSearchParams(location.search).has('debug');
+const MIC_LATENCY = 0.06;   // geschatte invoervertraging iPad (s)
+let analyser = null, micBuf = null, micOk = false, nsdf = null;
+const MIC = { hist: [], lastOnset: -1, collecting: false, onsetTime: 0, lastMidi: null, agree: 0, noise: 0.003 };
+
+async function ensureMic() {
+  if (micOk) return true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('⚠️ Deze browser geeft geen microfoon (open de pagina via https).');
+    return false;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const src = ac.createMediaStreamSource(stream);
+    analyser = ac.createAnalyser();
+    analyser.fftSize = 2048;
+    const mute = ac.createGain();
+    mute.gain.value = 0;
+    src.connect(analyser);
+    analyser.connect(mute).connect(ac.destination);   // Safari verwerkt alleen nodes die "aangesloten" zijn
+    micBuf = new Float32Array(analyser.fftSize);
+    micOk = true;
+    setStatus('🎤 Ik luister mee');
+    return true;
+  } catch (e) {
+    setStatus('⚠️ Geen toegang tot de microfoon: ik kan niet meeluisteren.');
+    return false;
+  }
+}
+
+// Genormaliseerde autocorrelatie (McLeod-methode). Geeft grondtoon + "helderheid".
+function detectPitch(buf, sr) {
+  const n = buf.length;
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += buf[i] * buf[i];
+  const rms = Math.sqrt(sum / n);
+  if (rms < 0.002) return { freq: 0, clarity: 0, rms };
+  const minLag = Math.max(2, Math.floor(sr / 1200)), maxLag = Math.floor(sr / 80);
+  const W = n - maxLag;
+  if (!nsdf || nsdf.length < maxLag + 2) nsdf = new Float32Array(maxLag + 2);
+  for (let tau = minLag; tau <= maxLag; tau++) {
+    let acf = 0, m = 0;
+    for (let j = 0; j < W; j++) { const a = buf[j], b = buf[j + tau]; acf += a * b; m += a * a + b * b; }
+    nsdf[tau] = m > 0 ? 2 * acf / m : 0;
+  }
+  nsdf[maxLag + 1] = 0;
+  const peaks = [];
+  let i = minLag;
+  while (i <= maxLag && nsdf[i] > 0) i++;
+  while (i <= maxLag) {
+    while (i <= maxLag && nsdf[i] <= 0) i++;
+    let best = -1, bv = -1;
+    while (i <= maxLag && nsdf[i] > 0) { if (nsdf[i] > bv) { bv = nsdf[i]; best = i; } i++; }
+    if (best > 0 && i <= maxLag) peaks.push(best);
+  }
+  if (!peaks.length) return { freq: 0, clarity: 0, rms };
+  let maxv = 0;
+  for (const p of peaks) maxv = Math.max(maxv, nsdf[p]);
+  const chosen = peaks.find(p => nsdf[p] >= 0.9 * maxv);
+  const a = nsdf[chosen - 1], b = nsdf[chosen], c = nsdf[chosen + 1];
+  const den = a - 2 * b + c;
+  const shift = den !== 0 ? 0.5 * (a - c) / den : 0;
+  return { freq: sr / (chosen + shift), clarity: b, rms };
+}
+
+// Eén "aanslag" = plotselinge stijging in volume + 2 frames dezelfde toon.
+function processMic() {
+  analyser.getFloatTimeDomainData(micBuf);
+  const r = detectPitch(micBuf, ac.sampleRate);
+  const t = ac.currentTime;
+  document.getElementById('levelFill').style.width = Math.min(100, r.rms * 900) + '%';
+  const h = MIC.hist;
+  h.push(r.rms);
+  if (h.length > 6) h.shift();
+  const ref = h.length >= 4 ? h[h.length - 4] : 0;
+  MIC.noise = r.rms < MIC.noise ? MIC.noise * 0.8 + r.rms * 0.2 : MIC.noise * 0.998 + r.rms * 0.002;
+  const thr = Math.max(0.006, MIC.noise * 3);
+  if (DEBUG) document.getElementById('debugInfo').textContent =
+    `rms ${r.rms.toFixed(3)} thr ${thr.toFixed(3)} f ${r.freq.toFixed(0)} cl ${r.clarity.toFixed(2)}`;
+  if (r.rms > thr && r.rms > ref * 1.6 && t - MIC.lastOnset > 0.12) {
+    MIC.lastOnset = t;
+    MIC.collecting = true;
+    MIC.onsetTime = t - (micBuf.length / ac.sampleRate) * 0.5 - MIC_LATENCY;
+    MIC.lastMidi = null;
+    MIC.agree = 0;
+  }
+  if (!MIC.collecting) return;
+  if (t - MIC.lastOnset > 0.25) { MIC.collecting = false; return; }
+  if (r.freq > 0 && r.clarity > 0.8 && r.rms > thr * 0.7) {
+    const m = Math.round(69 + 12 * Math.log2(r.freq / 440));
+    if (m === MIC.lastMidi) MIC.agree++; else { MIC.lastMidi = m; MIC.agree = 1; }
+    if (MIC.agree >= 2) { MIC.collecting = false; onNoteHeard(m, MIC.onsetTime); }
+  }
+}
+
+// ===================== Spel-logica =====================
+let state = 'idle';            // idle | countin | playing | paused | done
+let mode = 'wait', tempo = 60, hint = 1;
+let cur = 0, firstTry = true, wrongPresses = 0;
+let judged = [];
+let t0 = 0, startBeat = 0, spb = 1, segFromBeat = 0, segFromIdx = 0, scheduledUpTo = 0;
+let activeIdx = -1, shownLine = -1, lastCount = null, wakeLock = null, busy = false;
+
+const EARLY = 0.25;
+const lateTol = n => Math.min(0.45, Math.max(0.2, n.beats * spb * 0.75));
+const countLabel = b => (((b + PICKUP_POS) % BEATS_PER_MEASURE) + BEATS_PER_MEASURE) % BEATS_PER_MEASURE + 1;
+const beatTime = b => t0 + (b - startBeat) * spb;
+const nowBeat = () => startBeat + (ac.currentTime - t0) / spb;
+const measureStartIdx = i => notes.findIndex(n => n.measure === notes[i].measure);
+
+function setStatus(s) { document.getElementById('statusText').textContent = s; }
+
+function setLine(li) {
+  if (li === shownLine) return;
+  shownLine = li;
+  document.getElementById('sheet').style.transform = `translateY(${-li * 22}vh)`;
+}
+
+function setActive(i) {
+  if (i === activeIdx) return;
+  if (activeIdx >= 0) {
+    const e = noteEls[activeIdx];
+    e.g.classList.remove('active'); e.hl.classList.remove('active'); e.bubbleWrap.classList.remove('active');
+  }
+  activeIdx = i;
+  if (i >= 0) {
+    const e = noteEls[i];
+    e.g.classList.add('active'); e.hl.classList.add('active'); e.bubbleWrap.classList.add('active');
+    e.topLayer.appendChild(e.bubbleWrap);   // vergroot bolletje bovenop de buren
+    setLine(notes[i].line);
+  }
+  setTargetKey(i >= 0 && mode !== 'listen' ? notes[i] : null);
+}
+
+function judge(i, kind) {
+  judged[i] = kind;
+  const m = noteEls[i].mark;
+  m.setAttribute('class', 'mark ' + kind);
+  m.textContent = kind === 'bad' ? '✗' : kind === 'retry' ? '•' : '✓';
+  noteEls[i].bubbleWrap.classList.add('done');
+}
+function clearMarks(from = 0) {
+  for (let i = from; i < notes.length; i++) {
+    judged[i] = null;
+    noteEls[i].mark.textContent = '';
+    noteEls[i].bubbleWrap.classList.remove('done');
+  }
+}
+
+function startSegment(fromIdx, withCountIn) {
+  spb = 60 / tempo;
+  segFromIdx = fromIdx;
+  segFromBeat = notes[fromIdx].songBeat;
+  const countLen = fromIdx === 0 ? 2 * BEATS_PER_MEASURE - (BEATS_PER_MEASURE - PICKUP_POS) : BEATS_PER_MEASURE;
+  startBeat = withCountIn ? segFromBeat - countLen : segFromBeat;
+  t0 = ac.currentTime + 0.15;
+  if (withCountIn) for (let b = startBeat; b < segFromBeat; b++) click(beatTime(b), countLabel(b) === 1);
+  scheduledUpTo = segFromBeat;
+  lastCount = null;
+  state = withCountIn ? 'countin' : 'playing';
+  setActive(fromIdx);
+}
+
+function showCount(b) {
+  const k = Math.floor(b);
+  if (k >= segFromBeat || k === lastCount || k < startBeat) return;
+  lastCount = k;
+  const cd = document.getElementById('countdown');
+  cd.textContent = countLabel(k);
+  cd.classList.remove('pop'); void cd.offsetWidth; cd.classList.add('pop');
+}
+
+function tick() {
+  const b = nowBeat();
+  if (state === 'countin') {
+    showCount(b);
+    if (b >= segFromBeat) state = 'playing';
+    if (mode === 'wait') return;
+  }
+  if (mode === 'wait') return;
+
+  // geluid vooruit plannen (luister-modus: melodie; met-maat: zachte metronoom)
+  const horizon = b + 0.3 / spb;
+  if (horizon > scheduledUpTo) {
+    if (mode === 'listen') {
+      for (const n of notes) if (n.songBeat >= scheduledUpTo && n.songBeat < horizon) tone(n.midi, beatTime(n.songBeat), n.beats * spb * 0.9);
+    }
+    for (let k = Math.ceil(scheduledUpTo); k < horizon && k < TOTAL_BEATS; k++) click(beatTime(k), countLabel(k) === 1, 0.35);
+    scheduledUpTo = horizon;
+  }
+  if (state !== 'playing') return;
+
+  let a = Math.max(activeIdx, segFromIdx);
+  while (a + 1 < notes.length && notes[a + 1].songBeat <= b) a++;
+  setActive(a);
+
+  if (mode === 'tempo') {
+    for (let i = segFromIdx; i < notes.length; i++) {
+      const n = notes[i];
+      if (n.songBeat > b) break;
+      if (!judged[i] && (b - n.songBeat) * spb > lateTol(n) + 0.25) judge(i, 'bad');
+    }
+  }
+  if (b >= TOTAL_BEATS + 0.3) finish();
+}
+
+function onNoteHeard(midi, tHeard) {
+  const pc = ((midi % 12) + 12) % 12;
+  const st = STYLE[pc];
+  document.getElementById('heard').textContent = 'Ik hoor: ' + (st ? st.label : '?');
+  const playingLike = state === 'playing' || state === 'countin';
+  if (!playingLike || mode === 'listen') { flashKey(pc, 'plain'); return; }
+
+  if (mode === 'wait') {
+    if (state !== 'playing') return;
+    const n = notes[cur];
+    if (pc === n.pc) {
+      flashKey(pc, 'ok', n.midi);
+      judge(cur, firstTry ? 'ok' : 'retry');
+      cur++;
+      firstTry = true;
+      if (cur >= notes.length) finish(); else setActive(cur);
+    } else {
+      firstTry = false;
+      wrongPresses++;
+      flashKey(pc, 'bad');
+      const s = noteEls[cur].shaker;
+      s.classList.remove('shake'); void s.getBoundingClientRect(); s.classList.add('shake');
+    }
+    return;
+  }
+
+  // met maat: zoek de dichtstbijzijnde nog-niet-beoordeelde noot met dezelfde toon binnen het venster
+  const b = startBeat + (tHeard - t0) / spb;
+  let best = -1, bestD = Infinity;
+  for (let i = segFromIdx; i < notes.length; i++) {
+    const n = notes[i];
+    const dt = (b - n.songBeat) * spb;
+    if (dt < -EARLY) break;
+    if (judged[i] || dt > lateTol(n)) continue;
+    if (n.pc === pc && Math.abs(dt) < bestD) { best = i; bestD = Math.abs(dt); }
+  }
+  if (best >= 0) { judge(best, 'ok'); flashKey(pc, 'ok', notes[best].midi); }
+  else { wrongPresses++; flashKey(pc, 'bad'); }
+}
+
+function onKeyTap(midi) {
+  ensureAudio();
+  if (DEBUG) { onNoteHeard(midi, ac.currentTime); return; }
+  flashKey(midi % 12, 'plain', midi);
+  // Niet laten klinken tijdens het meeluisteren: de microfoon zou het oppikken.
+  if ((state === 'playing' || state === 'countin') && mode !== 'listen') {
+    setStatus('🎹 Speel op je eigen keyboard, ik luister mee!');
+    return;
+  }
+  const play = () => tone(midi, ac.currentTime + 0.02, 0.4);
+  if (ac.state === 'running') play(); else ac.resume().then(play);
+}
+// Safari geeft geluid soms pas vrij na een volledige klik/tik: ontgrendel bij elke gebruikersactie.
+['pointerup', 'click', 'touchend', 'keydown'].forEach(ev =>
+  document.addEventListener(ev, () => { ensureAudio(); }, { capture: true }));
+
+async function keepAwake() {
+  try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function releaseAwake() { try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null; }
+
+async function begin() {
+  if (mode !== 'listen' && !DEBUG) await ensureMic();
+  keepAwake();
+  cur = 0; firstTry = true; wrongPresses = 0;
+  clearMarks();
+  setActive(-1);
+  startSegment(0, true);
+}
+
+function pause() {
+  stopScheduled();
+  if (mode === 'wait') {
+    state = 'paused';
+  } else {
+    const from = measureStartIdx(Math.max(activeIdx, 0));
+    clearMarks(from);
+    state = 'paused';
+    setActive(from);
+  }
+  document.getElementById('countdown').classList.remove('pop');
+}
+
+function resume() {
+  keepAwake();
+  if (mode === 'wait') {
+    if (activeIdx === -1 || cur === 0 && !judged[0]) { startSegment(cur, true); return; }
+    state = 'playing';
+    setActive(cur);
+  } else {
+    startSegment(activeIdx, true);
+  }
+}
+
+function reset() {
+  stopScheduled();
+  releaseAwake();
+  state = 'idle';
+  cur = 0;
+  clearMarks();
+  setActive(-1);
+  setLine(0);
+  document.getElementById('countdown').classList.remove('pop');
+  document.getElementById('heard').textContent = '';
+}
+
+// ===================== Resultaat + voortgang =====================
+const HISTORY_KEY = 'kerstpiano.history';
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch (e) { return []; } }
+
+function finish() {
+  state = 'done';
+  stopScheduled();
+  releaseAwake();
+  setActive(-1);
+  updateUI();
+  if (mode === 'listen') return;
+  if (mode === 'tempo' && !micOk && !DEBUG) return;   // zonder microfoon valt er niets te tellen
+
+  const total = notes.length;
+  const ok = judged.filter(j => j === 'ok').length;
+  const pct = Math.round(100 * ok / total);
+  const hist = loadHistory();
+  const same = hist.filter(h => h.mode === mode && (mode === 'wait' || h.tempo === tempo) && h.hint === hint);
+  const best = same.reduce((m, h) => Math.max(m, h.pct), 0);
+  hist.push({ date: new Date().toISOString(), mode, tempo, hint, pct, ok, total, wrong: wrongPresses });
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(hist.slice(-500)));
+
+  const stars = pct >= 90 ? 3 : pct >= 70 ? 2 : pct >= 40 ? 1 : 0;
+  document.getElementById('stars').textContent = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+  document.getElementById('resTitle').textContent =
+    pct >= 90 ? 'Fantastisch!' : pct >= 70 ? 'Heel goed!' : pct >= 40 ? 'Goed bezig!' : 'Blijven oefenen!';
+  document.getElementById('resLine').textContent = mode === 'wait'
+    ? `${ok} van de ${total} noten in één keer goed (${pct}%)`
+    : `${ok} van de ${total} noten goed op tijd (${pct}%)`;
+  document.getElementById('resBest').textContent = same.length
+    ? (pct > best ? `Nieuw record! (vorige beste: ${best}%)` : `Jouw beste: ${best}%`) : 'Eerste keer zo gespeeld!';
+  document.getElementById('resTip').textContent = nextStepTip(pct);
+  document.getElementById('result').hidden = false;
+}
+
+// Volgende stap in het leerpad: wacht-modus → met maat langzaam → sneller → minder hulp.
+function nextStepTip(pct) {
+  if (pct < 90) return mode === 'wait' ? 'Tip: oefen de ✗-noten nog eens.' : 'Tip: speel nog een keer op dit tempo.';
+  if (mode === 'wait') return 'Klaar voor de volgende stap: kies 🎵 Met maat!';
+  if (tempo < 100) return `Volgende stap: zet het tempo op ${tempo + 10}.`;
+  if (hint < 3) return `Volgende stap: probeer "${hint === 1 ? 'Beetje hulp' : 'Zelf lezen'}".`;
+  return 'Je bent klaar voor het optreden! 🎄';
+}
+
+// ===================== Knoppen =====================
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
+
+function updateUI() {
+  const L = {
+    idle:    ['START', true, 'STOP', false],
+    countin: ['…', false, 'STOP', true],
+    playing: ['…', false, 'STOP', true],
+    paused:  ['VERDER', true, 'RESET', true],
+    done:    ['NOG EEN KEER', true, 'RESET', true],
+  }[state];
+  btnStart.textContent = L[0]; btnStart.disabled = !L[1] || busy;
+  btnStop.textContent = L[2]; btnStop.disabled = !L[3];
+  const locked = state === 'countin' || state === 'playing';
+  document.querySelectorAll('#modeGroup button').forEach(b => { b.classList.toggle('on', b.dataset.mode === mode); b.disabled = locked; });
+  document.querySelectorAll('#hintGroup button').forEach(b => b.classList.toggle('on', +b.dataset.hint === hint));
+  document.getElementById('slower').disabled = locked || tempo <= 40;
+  document.getElementById('faster').disabled = locked || tempo >= 140;
+  document.getElementById('tempoVal').textContent = `${tempo} ♩/min`;
+  document.body.classList.remove('hint1', 'hint2', 'hint3');
+  document.body.classList.add('hint' + hint);
+  localStorage.setItem('kerstpiano.settings', JSON.stringify({ mode, tempo, hint }));
+}
+
+btnStart.addEventListener('click', async () => {
+  ensureAudio();
+  if (busy) return;
+  busy = true; updateUI();
+  try {
+    if (state === 'idle') await begin();
+    else if (state === 'paused') resume();
+    else if (state === 'done') { reset(); await begin(); }
+  } finally { busy = false; updateUI(); }
+});
+btnStop.addEventListener('click', () => {
+  if (state === 'countin' || state === 'playing') pause();
+  else if (state === 'paused' || state === 'done') reset();
+  updateUI();
+});
+document.querySelectorAll('#modeGroup button').forEach(b => b.addEventListener('click', () => {
+  if (mode !== b.dataset.mode) { mode = b.dataset.mode; if (state !== 'idle') reset(); }
+  updateUI();
+}));
+document.querySelectorAll('#hintGroup button').forEach(b => b.addEventListener('click', () => {
+  hint = +b.dataset.hint; setTargetKey(activeIdx >= 0 && mode !== 'listen' ? notes[activeIdx] : null); updateUI();
+}));
+document.getElementById('slower').addEventListener('click', () => { tempo = Math.max(40, tempo - 10); updateUI(); });
+document.getElementById('faster').addEventListener('click', () => { tempo = Math.min(140, tempo + 10); updateUI(); });
+document.getElementById('resOk').addEventListener('click', () => { document.getElementById('result').hidden = true; });
+document.getElementById('micBtn').addEventListener('click', async () => {
+  ensureAudio();
+  if (await ensureMic()) setStatus('🎤 Speel een toets: ik laat zien welke ik hoor');
+});
+
+// ===================== Start =====================
+try {
+  const s = JSON.parse(localStorage.getItem('kerstpiano.settings'));
+  if (s) { mode = s.mode || mode; tempo = s.tempo || tempo; hint = s.hint || hint; }
+} catch (e) {}
+buildSheet();
+buildKeyboard();
+setLine(0);
+updateUI();
+setStatus(DEBUG ? 'DEBUG: tik op het scherm-keyboard = gespeelde noot' : 'Druk op START');
+function step() {
+  if (micOk) processMic();
+  if (ac && (state === 'countin' || state === 'playing')) tick();
+}
+(function frame() { requestAnimationFrame(frame); step(); })();
+
+// Voor tests
+window.__kp = { notes, detectPitch, TOTAL_BEATS, step, hear: (m, t) => onNoteHeard(m, t != null ? t : ac.currentTime),
+  get t0() { return t0; }, get spb() { return spb; }, get startBeat() { return startBeat; },
+  get state() { return state; }, get judged() { return judged; }, get cur() { return cur; } };
+</script>
+</body>
+</html>
