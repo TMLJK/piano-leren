@@ -5,6 +5,11 @@ import { onNote, startMic, micReady, setStatus, DEBUG, emit } from '../mic.js';
 import { buildKeyboard } from '../keyboard.js';
 import * as progress from '../progress.js';
 import { celebrate } from '../celebrate.js';
+import { LEVELS, tempoUnlocked, UNLOCK_TEMPO } from './ritme.js';
+
+let go = () => {};
+export function init(goFn) { go = goFn; }
+const TEMPO_LOCK_TIP = '🔒 Met maat gaat open als je 🦘 Kangoeroesprong haalt in Ritme-echo';
 
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
@@ -112,7 +117,7 @@ function buildSheet() {
 let kb = null, built = false, unsub = null;
 let state = 'idle';            // idle | countin | playing | paused | done
 let mode = 'wait', tempo = 90, hint = 1;
-let cur = 0, firstTry = true, wrongPresses = 0, judged = [];
+let cur = 0, firstTry = true, wrongPresses = 0, wrongStreak = 0, judged = [];
 let t0 = 0, startBeat = 0, spb = 1, segFromBeat = 0, segFromIdx = 0, scheduledUpTo = 0;
 let activeIdx = -1, shownLine = -1, lastCount = null, wakeLock = null, busy = false, lastOops = 0;
 
@@ -125,6 +130,7 @@ const measureStartIdx = i => notes.findIndex(n => n.measure === notes[i].measure
 export function enter() {
   const s = progress.settings().liedje;
   mode = s.mode; tempo = s.tempo; hint = s.hint;
+  if (mode === 'tempo' && !tempoUnlocked()) mode = 'wait';
   if (!built) {
     buildSheet();
     kb = buildKeyboard($('keyboard'), onKeyTap);
@@ -162,11 +168,11 @@ function setActive(i) {
   }
   setTarget(i);
 }
-// Alleen wat lukt krijgt een vinkje; gemiste noten blijven gewoon leeg.
+// Groen vinkje = in één keer goed; grijs vinkje = gevonden na zoeken; gemist = leeg.
 function judge(i, kind) {
   judged[i] = kind;
-  if (kind === 'ok') {
-    noteEls[i].mark.setAttribute('class', 'mark ok');
+  if (kind === 'ok' || kind === 'retry') {
+    noteEls[i].mark.setAttribute('class', 'mark ' + kind);
     noteEls[i].mark.textContent = '✓';
   }
   noteEls[i].bubbleWrap.classList.add('done');
@@ -178,13 +184,16 @@ function clearMarks(from = 0) {
     noteEls[i].bubbleWrap.classList.remove('done');
   }
 }
+function showTip(text) {
+  const o = $('oeps');
+  o.textContent = text;
+  o.classList.remove('show'); void o.offsetWidth; o.classList.add('show');
+}
 function oeps() {
   const t = performance.now();
   if (t - lastOops < 1500) return;
   lastOops = t;
-  const o = $('oeps');
-  o.textContent = ['Oeps, geeft niks! 😄', 'Hup, gewoon door! 🎶', 'Geeft niks, speel verder! 😊'][Math.floor(Math.random() * 3)];
-  o.classList.remove('show'); void o.offsetWidth; o.classList.add('show');
+  showTip(['Oeps, geeft niks! 😄', 'Hup, gewoon door! 🎶', 'Geeft niks, speel verder! 😊'][Math.floor(Math.random() * 3)]);
 }
 
 function startSegment(fromIdx, withCountIn) {
@@ -251,17 +260,20 @@ function onNoteHeard(midi, tHeard) {
     const n = notes[cur];
     if (pc === n.pc) {
       kb.flash(pc, 'ok', n.midi);
-      judge(cur, 'ok');
-      if (!firstTry) judged[cur] = 'retry';
+      judge(cur, firstTry ? 'ok' : 'retry');
       cur++;
       firstTry = true;
+      wrongStreak = 0;
       if (cur >= notes.length) finish(); else setActive(cur);
     } else {
       firstTry = false;
       wrongPresses++;
+      wrongStreak++;
       kb.flash(pc, 'oops');
       const s = noteEls[cur].shaker;
       s.classList.remove('shake'); void s.getBoundingClientRect(); s.classList.add('shake');
+      // Gokken = alle toetsen afgaan. Na 3 missers op rij: eerst kijken.
+      if (wrongStreak === 3) showTip('👀 Kijk eerst naar de kleur, dan spelen');
     }
     return;
   }
@@ -297,7 +309,7 @@ function releaseAwake() { try { wakeLock && wakeLock.release(); } catch (e) {} w
 async function begin() {
   if (mode !== 'listen') await startMic();
   keepAwake();
-  cur = 0; firstTry = true; wrongPresses = 0;
+  cur = 0; firstTry = true; wrongPresses = 0; wrongStreak = 0;
   clearMarks();
   setActive(-1);
   startSegment(0, true);
@@ -368,15 +380,46 @@ function finish() {
   const firstOk = judged.filter(j => j === 'ok').length;
   const pct = Math.round(100 * (mode === 'wait' ? firstOk : ok) / total);
   const id = mode === 'wait' ? 'liedje-wait' : 'liedje-tempo';
-  const good = mode === 'wait' ? true : pct >= 80;
-  const out = progress.recordRun(id, good, { sticker: mode === 'wait' ? '🎹' : '🎼', log: { mode, tempo, hint, pct, wrong: wrongPresses } });
+  const good = pct >= 80;
+  const bonus = [];
+  if (mode === 'wait' && firstOk === total) bonus.push({ id: 'liedje-perfect-wait', emoji: '💎' });
+  if (mode === 'tempo' && ok === total) bonus.push({ id: 'liedje-perfect-tempo', emoji: '👑' });
+  const out = progress.recordRun(id, good, { sticker: mode === 'wait' ? '🎹' : '🎼', bonus, log: { mode, tempo, hint, pct, wrong: wrongPresses } });
+  // Eerlijk: in "Wacht op mij" krijgt alleen een noot die je in één keer vond een kerstbal.
+  const balls = mode === 'wait' ? firstOk : ok;
   celebrate({
     emoji: '🎄', party: true,
-    title: mode === 'wait' ? 'Het hele liedje gespeeld!' : ok >= total * 0.8 ? 'Wat een mooi concert!' : 'Wat heb jij mooi gespeeld!',
-    text: `Je hebt ${ok} kerstballen in de boom gehangen!`,
-    extra: treeSvg(ok, total), stickers: out.stickers,
-    buttons: [{ label: 'OK', primary: true }],
+    title: mode === 'wait' ? 'Het hele liedje gespeeld!' : ok >= total * 0.8 ? 'Wat een mooi concert!' : 'Het hele liedje gespeeld!',
+    text: mode === 'wait'
+      ? `${firstOk} van de ${total} noten in één keer goed: ${firstOk} kerstballen in de boom!`
+      : `${ok} van de ${total} noten goed op tijd: ${ok} kerstballen in de boom!`,
+    extra: resultExtra(balls, total, firstOk), stickers: out.stickers,
+    buttons: goalButtons(firstOk, total),
   });
+}
+
+// Doel laten zien: na een sterke ronde "Wacht op mij" de weg naar "Met maat".
+const strongWait = (firstOk, total) => mode === 'wait' && firstOk / total >= 0.85;
+function resultExtra(balls, total, firstOk) {
+  const box = document.createElement('div');
+  box.appendChild(treeSvg(balls, total));
+  if (!strongWait(firstOk, total)) return box;
+  const goal = document.createElement('div');
+  goal.className = 'goalCard';
+  if (!tempoUnlocked()) {
+    const upto = LEVELS.slice(0, LEVELS.findIndex(l => l.id === UNLOCK_TEMPO) + 1);
+    const path = upto.map(l => `<span class="${['passed', 'gold'].includes(progress.levelStatus(l.id)) ? 'done' : ''}">${l.icon}</span>`).join('→');
+    goal.innerHTML = `🎯 <b>Klaar voor de volgende stap:</b> het liedje 🎵 <b>Met maat</b>!<br>Oefen daarvoor het ritme tot de kangoeroe:<div class="goalPath">${path} → 🎵</div>`;
+  } else {
+    goal.innerHTML = '🎯 <b>Klaar voor de volgende stap:</b> probeer nu 🎵 <b>Met maat</b>!';
+  }
+  box.appendChild(goal);
+  return box;
+}
+function goalButtons(firstOk, total) {
+  if (!strongWait(firstOk, total)) return [{ label: 'OK', primary: true }];
+  if (!tempoUnlocked()) return [{ label: 'OK' }, { label: '🥁 Naar Ritme-echo', primary: true, action: () => go('ritme') }];
+  return [{ label: 'OK' }, { label: '🎵 Met maat proberen', primary: true, action: () => { reset(); mode = 'tempo'; updateUI(); } }];
 }
 
 // ===================== Knoppen =====================
@@ -390,6 +433,7 @@ function updateUI() {
   bt.textContent = L[2]; bt.disabled = !L[3];
   const locked = state === 'countin' || state === 'playing';
   document.querySelectorAll('#modeGroup button').forEach(b => { b.classList.toggle('on', b.dataset.mode === mode); b.disabled = locked; });
+  $('modeGroup').querySelector('[data-mode=tempo]').textContent = tempoUnlocked() ? '🎵 Met maat' : '🔒 Met maat';
   document.querySelectorAll('#hintGroup button').forEach(b => b.classList.toggle('on', +b.dataset.hint === hint));
   $('slower').disabled = locked || tempo <= 50;
   $('faster').disabled = locked || tempo >= 140;
@@ -419,6 +463,7 @@ function wireControls() {
     updateUI();
   });
   document.querySelectorAll('#modeGroup button').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.mode === 'tempo' && !tempoUnlocked()) { showTip(TEMPO_LOCK_TIP); return; }
     if (mode !== b.dataset.mode) { mode = b.dataset.mode; if (state !== 'idle') reset(); }
     updateUI();
   }));

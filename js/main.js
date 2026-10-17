@@ -4,12 +4,17 @@ import { poll, startMic, setStatus, DEBUG, getCalib, resetCalib } from './mic.js
 import * as progress from './progress.js';
 import * as ritme from './games/ritme.js';
 import * as liedje from './games/liedje.js';
+import { renderAlbum as drawAlbum, ownedCount, totalCount } from './album.js';
 
 const $ = id => document.getElementById(id);
 const SCREENS = ['home', 'ritme', 'ritmeplay', 'liedje', 'album', 'ouder'];
 let current = 'home';
 
+// Oefenregel: eerst opwarmen (1 rondje Ritme-echo per dag), dan gaat het liedje open.
+export const needsWarmup = () => progress.settings().rules && !progress.warmedUpToday();
+
 function go(name) {
+  if (name === 'liedje' && needsWarmup()) name = 'ritme';
   if (current === 'ritmeplay' && name !== 'ritmeplay') ritme.exit();
   if (current === 'liedje' && name !== 'liedje') liedje.exit();
   current = name;
@@ -22,6 +27,7 @@ function go(name) {
   window.scrollTo(0, 0);
 }
 ritme.init(go);
+liedje.init(go);
 
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-go]');
@@ -41,28 +47,17 @@ function renderHome() {
     s.innerHTML = `<span>${d.done ? '❄️' : ''}</span><small>${d.label}</small>`;
     w.appendChild(s);
   });
-  const n = progress.stickers().length;
-  $('stickerCount').textContent = n ? `${n} sticker${n === 1 ? '' : 's'}` : 'Nog leeg: verdien je eerste!';
+  const n = ownedCount();
+  $('stickerCount').textContent = n ? `${n} van de ${totalCount()} stickers` : 'Nog leeg: verdien je eerste!';
+  const lock = needsWarmup();
+  const card = document.querySelector('.c-liedje');
+  card.classList.toggle('locked', lock);
+  card.querySelector('small').textContent = lock ? '🔒 Eerst opwarmen: 1 rondje Ritme-echo 🥁' : 'We Wish You a Merry Christmas';
+  document.querySelector('.c-ritme small').textContent = lock ? '🔥 Begin hier met opwarmen!' : 'Doe het ritme na!';
 }
 
 // ===================== Stickerboek =====================
-function renderAlbum() {
-  const box = $('album');
-  box.innerHTML = '';
-  const list = progress.stickers();
-  list.forEach(s => {
-    const d = document.createElement('div');
-    d.className = 'sticker' + (s.gold ? ' gold' : '');
-    d.innerHTML = `<span>${s.emoji}</span><small>${s.surprise ? 'verrassing' : s.gold ? 'goud' : ''}</small>`;
-    box.appendChild(d);
-  });
-  for (let i = 0; i < Math.max(4, 12 - list.length); i++) {
-    const d = document.createElement('div');
-    d.className = 'sticker empty';
-    d.innerHTML = '<span>?</span>';
-    box.appendChild(d);
-  }
-}
+function renderAlbum() { drawAlbum($('album')); }
 
 // ===================== Ouderscherm =====================
 function renderOuder() {
@@ -84,6 +79,10 @@ function renderOuder() {
     <div class="setRow">Tempo Ritme-echo:
       <button id="oTslow">−</button><b id="oTval">${s.ritmeTempo}</b><button id="oTfast">+</button>
       <span class="small">(advies 90–100; lager is voor kinderen níet makkelijker)</span></div>
+    <div class="setRow">Oefenregels (eerst opwarmen, "Met maat" via Ritme-echo):
+      <button id="oRulesOn" class="${s.rules ? 'on' : ''}">Aan</button>
+      <button id="oRulesOff" class="${!s.rules ? 'on' : ''}">Uit</button>
+      <span class="small">Vandaag opgewarmd: ${progress.warmedUpToday() ? 'ja' : 'nee'}</span></div>
     <div class="setRow">Hoe streng op tijd:
       <button id="oTolR" class="${s.tolerance === 'ruim' ? 'on' : ''}">Ruim</button>
       <button id="oTolN" class="${s.tolerance === 'normaal' ? 'on' : ''}">Normaal</button></div>
@@ -93,6 +92,8 @@ function renderOuder() {
   const upd = f => { const x = progress.settings(); f(x); progress.saveSettings(x); renderOuder(); };
   $('oTslow').onclick = () => upd(x => { x.ritmeTempo = Math.max(60, x.ritmeTempo - 10); });
   $('oTfast').onclick = () => upd(x => { x.ritmeTempo = Math.min(130, x.ritmeTempo + 10); });
+  $('oRulesOn').onclick = () => upd(x => { x.rules = true; });
+  $('oRulesOff').onclick = () => upd(x => { x.rules = false; });
   $('oTolR').onclick = () => upd(x => { x.tolerance = 'ruim'; });
   $('oTolN').onclick = () => upd(x => { x.tolerance = 'normaal'; });
   $('oCal').onclick = () => { resetCalib(); renderOuder(); };

@@ -205,3 +205,28 @@ button { font:inherit; color:inherit; cursor:pointer; }
 #confetti { position:fixed; inset:0; pointer-events:none; z-index:20; overflow:hidden; }
 #confetti span { position:absolute; top:-40px; animation:fall 3s linear forwards; }
 @keyframes fall { to { transform:translateY(110vh) rotate(360deg); } }
+.puff { font-size:20px; text-anchor:middle; animation:puff .9s ease-out forwards; }
+@keyframes puff { 0% { opacity:0; transform:translateY(8px); } 100% { opacity:.9; transform:translateY(0); } }
+.msg .tip { font-size:clamp(16px, 2.2vw, 22px); font-weight:600; color:#6A1B9A; margin-top:4px; }
+.mark.retry { fill:#9E9E9E; }
+
+/* ---------- Doelen & opwarmen ---------- */
+.warmBanner { background:#FFF3E0; border-radius:16px; padding:12px 18px; font-size:clamp(17px, 2.2vw, 22px); margin-bottom:6px; }
+.card.locked { filter:saturate(.4); opacity:.75; }
+.unlockNote { background:#E8F5E9; border-radius:14px; padding:10px 14px; margin:8px 0; font-size:18px; font-weight:700; color:#1B5E20; }
+.goalCard { background:#F3E5F5; border-radius:16px; padding:12px 16px; margin:10px 0 4px; font-size:18px; line-height:1.4; }
+.goalPath { font-size:30px; margin-top:6px; letter-spacing:2px; }
+.goalPath span { opacity:.35; filter:grayscale(1); }
+.goalPath span.done { opacity:1; filter:none; }
+/* Stickerboek met pagina's */
+.album { display:block; }
+.albumPage { margin-bottom:22px; }
+.albumPage h3 { margin:4px 0 10px; font-size:22px; }
+.albumPage .count { font-size:16px; color:#888; font-weight:600; margin-left:8px; }
+.albumGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:14px; }
+.albumGrid .sticker small { font-size:11px; text-align:center; padding:0 6px; line-height:1.1; }
+.sticker.shadow { background:#f4f4f4; box-shadow:inset 0 0 0 3px #e6e6e6; }
+.sticker.shadow span { filter:grayscale(1) brightness(0); opacity:.1; }
+.sticker.gold:not(.shadow) { animation:shine 3s ease-in-out infinite; }
+@keyframes shine { 0%,100% { box-shadow:0 3px 0 #0002, inset 0 0 0 4px #FFECB3, 0 0 0 #FFD54F; } 50% { box-shadow:0 3px 0 #0002, inset 0 0 0 4px #FFECB3, 0 0 18px #FFD54F; } }
+.sticker.gold.shadow { background:#FFF8E1; box-shadow:inset 0 0 0 3px #FFE082; }

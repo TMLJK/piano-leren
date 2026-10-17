@@ -3,7 +3,8 @@
 // Goud = 3 goede rondes, waarvan op minstens 2 verschillende dagen. Een mislukte ronde kost nooit iets.
 
 const KEY = 'kerstpiano.progress.v1';
-const GOLD_RUNS = 3, GOLD_DAYS = 2, SURPRISE_CHANCE = 0.2;
+// Verrassingen zijn zeldzaam: kleine kans per rondje, hooguit één per dag, en nooit dubbel.
+const GOLD_RUNS = 3, GOLD_DAYS = 2, SURPRISE_CHANCE = 0.12;
 export const SURPRISES = ['🦌', '🍪', '🧦', '🔔', '🎁', '🐧', '❄️', '🍭', '🦉', '🕯️', '🧸', '🌈'];
 
 const today = () => {
@@ -15,6 +16,7 @@ function load() {
   try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; }
 }
 let P = load() || { levels: {}, stickers: [], days: [], history: [] };
+P.warmups = P.warmups || [];
 function save() { localStorage.setItem(KEY, JSON.stringify(P)); }
 
 export function levelData(id) {
@@ -41,21 +43,39 @@ export function recordRun(id, good, detail = {}) {
     if (!L.gold && L.goodRuns >= GOLD_RUNS && L.goodDays.length >= GOLD_DAYS) { L.gold = true; out.newlyGold = true; }
   }
   if (!P.days.includes(d)) P.days.push(d);
-  if (detail.sticker && out.newlyPassed) out.stickers.push(addSticker(detail.sticker, false));
-  if (detail.sticker && out.newlyGold) out.stickers.push(addSticker(detail.sticker, true));
+  if (detail.sticker && out.newlyPassed && !hasSticker(id)) out.stickers.push(addSticker(id, detail.sticker, false));
+  if (detail.sticker && out.newlyGold && !hasSticker(id + '-gold')) out.stickers.push(addSticker(id + '-gold', detail.sticker, true));
+  // Bijzondere prestaties (bv. alles in één keer goed): één keer te verdienen.
+  (detail.bonus || []).forEach(b => { if (!hasSticker(b.id)) out.stickers.push(addSticker(b.id, b.emoji, !!b.gold)); });
   // Af en toe een onverwacht cadeautje — juist niet aangekondigd.
-  if (Math.random() < SURPRISE_CHANCE) out.stickers.push(addSticker(SURPRISES[Math.floor(Math.random() * SURPRISES.length)], false, true));
+  const unowned = SURPRISES.filter(e => !hasSticker('surprise-' + e));
+  if (P.lastSurprise !== d && unowned.length && Math.random() < SURPRISE_CHANCE) {
+    const e = unowned[Math.floor(Math.random() * unowned.length)];
+    P.lastSurprise = d;
+    out.stickers.push(addSticker('surprise-' + e, e, false, true));
+  }
   P.history.push({ date: new Date().toISOString(), id, good, ...detail.log });
   if (P.history.length > 1000) P.history = P.history.slice(-1000);
   save();
   return out;
 }
 
-function addSticker(emoji, gold, surprise = false) {
-  const s = { emoji, gold, surprise, date: today() };
+function addSticker(id, emoji, gold, surprise = false) {
+  const s = { id, emoji, gold, surprise, date: today() };
   P.stickers.push(s);
   return s;
 }
+export function hasSticker(id) { return P.stickers.some(s => s.id === id); }
+// Oude stickers (zonder id) eenmalig een id geven, zodat ze op de juiste plek in het boek komen.
+export function migrateStickers(idFor) {
+  let changed = false;
+  P.stickers.forEach(s => { if (!s.id) { s.id = idFor(s); changed = true; } });
+  if (changed) save();
+}
+
+// Opwarmen: één rondje Ritme-echo per dag opent het liedje.
+export function warmedUpToday() { return P.warmups.includes(today()); }
+export function markWarmup() { if (!warmedUpToday()) { P.warmups.push(today()); save(); return true; } return false; }
 
 export function goldProgress(id) {
   const L = P.levels[id];
@@ -78,11 +98,12 @@ export function thisWeek() {
   });
 }
 
-export function resetAll() { P = { levels: {}, stickers: [], days: [], history: [] }; save(); }
+export function resetAll() { P = { levels: {}, stickers: [], days: [], history: [], warmups: [] }; save(); }
 
 // Instellingen (ouderscherm)
 const SKEY = 'kerstpiano.settings.v2';
-const DEFAULTS = { ritmeTempo: 90, tolerance: 'ruim', liedje: { mode: 'wait', tempo: 90, hint: 1 } };
+// rules = oefenregels: eerst opwarmen + 'Met maat' gaat open via Ritme-echo.
+const DEFAULTS = { ritmeTempo: 90, tolerance: 'ruim', rules: true, liedje: { mode: 'wait', tempo: 90, hint: 1 } };
 export function settings() {
   try { return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(SKEY)) || {}) }; } catch (e) { return { ...DEFAULTS }; }
 }

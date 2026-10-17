@@ -46,18 +46,26 @@ export const LEVELS = [
 ];
 const IDS = LEVELS.map(l => l.id);
 
-const HAPPY = ['Precies goed! 🎉', 'Wauw, net zo! ⭐', 'Super gedaan! 🌟', 'Hoor je dat? Perfect! 🎶', 'Yes! Helemaal goed! 🙌'];
-const AGAIN = ['Bijna! Die komt straks nog een keer 😊', 'Goed geprobeerd! We doen hem zo nog eens 🙂', 'Oei, lastig! Hij komt nog terug 😄'];
-const pick = a => a[Math.floor(Math.random() * a.length)];
 const $ = id => document.getElementById(id);
 
 let go = () => {};
 export function init(goFn) { go = goFn; }
 
 // ===================== Levelpad =====================
+// Welk Ritme-level opent "Met maat" bij het liedje.
+export const UNLOCK_TEMPO = 'r5';
+export const tempoUnlocked = () => !progress.settings().rules || ['passed', 'gold'].includes(progress.levelStatus(UNLOCK_TEMPO));
+
 export function renderPath() {
   const box = $('levelPath');
   box.innerHTML = '';
+  // Doel-balk bovenaan: opwarmen, of waar ze naartoe werkt.
+  const ban = $('warmBanner');
+  const rules = progress.settings().rules;
+  if (rules && !progress.warmedUpToday()) ban.innerHTML = '🔥 <b>Opwarmen!</b> Speel één rondje, dan gaat 🎹 het liedje open 🔑';
+  else if (!tempoUnlocked()) ban.innerHTML = '🎯 <b>Doel:</b> haal 🦘 Kangoeroesprong, dan mag je het liedje 🎵 <b>Met maat</b> spelen!';
+  else ban.innerHTML = '';
+  ban.hidden = !ban.innerHTML;
   LEVELS.forEach((L, i) => {
     const st = progress.levelStatus(L.id);
     const open = progress.isUnlocked(IDS, i);
@@ -160,6 +168,7 @@ function nextChallenge(delay) {
     c, ev, spb, L0, P0, counts, shown: -1,
     exp: ev.map(e => P0 + e.b * spb),
     hit: ev.map(() => null),               // afwijking in s per verwachte noot, of null
+    extra: 0, extraInLong: 0,              // tikken waar geen nootje hoort (en hoeveel tijdens een lange noot)
     early: calibrating ? 0.35 : early, late: calibrating ? 0.35 : late,
     listenFrom: P0 + firstB * spb - (calibrating ? 0.35 : early),
     end: P0 + lastEnd * spb + late + 0.15,
@@ -180,6 +189,40 @@ function heard(midi, t) {
     if (d >= -ch.early && d <= ch.late && Math.abs(d) < bd) { bd = Math.abs(d); best = i; }
   });
   if (best >= 0) { ch.hit[best] = t - ch.exp[best]; markHit(best); }
+  else {                                              // tik waar geen nootje hoort
+    const beat = (t - ch.P0) / ch.spb;
+    ch.extra++;
+    if (ch.ev.some(e => e.dur >= 2 && beat > e.b && beat < e.b + e.dur)) ch.extraInLong++;
+    puff(beat);
+  }
+}
+
+// Extra tik: wolkje in de balk. Blijft staan tot de volgende beurt, zodat ze ziet wáár het was.
+function puff(beat) {
+  const svg = $('rpRhythm').firstChild;
+  if (!svg) return;
+  el('text', { x: beatToX(beat), y: 24, class: 'puff' }, svg, '💨');
+}
+
+// Eén eerlijke regel + hooguit één tip: het belangrijkste verbeterpunt eerst.
+function feedbackText({ good, hits, n, extra, extraInLong, bias, tooMany }) {
+  const taps = hits + extra;
+  const biasTip = bias === 'early' ? 'Je was steeds een beetje te vroeg 🐇 Wacht op de tik!'
+                : bias === 'late' ? 'Je was steeds een beetje te laat 🐢 Iets eerder tikken!' : '';
+  if (good) {
+    const base = hits === n ? `Raak! Alle ${n} nootjes ⭐` : `Raak! ${hits} van de ${n} nootjes ⭐`;
+    return { text: base, tip: biasTip ? 'Tip: ' + biasTip.charAt(0).toLowerCase() + biasTip.slice(1) : '' };
+  }
+  if (tooMany) {
+    const head = taps > n ? `Je tikte ${taps} keer, maar er waren ${n} nootjes. ${taps - n} te veel 💨`
+                          : `${extra} tikjes vielen op een plek zonder nootje 💨`;
+    const tip = extraInLong * 2 >= extra ? 'Bij een lange noot 🐘 tik je één keer en dan wacht je.'
+                                         : 'Alleen tikken als er een nootje komt!';
+    return { text: head, tip };
+  }
+  const missed = n - hits;
+  if (biasTip) return { text: `Je miste er ${missed}.`, tip: biasTip };
+  return { text: `Je miste er ${missed}.`, tip: 'Kijk welke nootjes nog geen ⭐ hebben.' };
 }
 
 export function tick() {
@@ -216,28 +259,37 @@ function evaluate() {
   const c = ch.c;
   let hits = ch.hit.filter(h => h != null).length;
   const n = ch.ev.length;
+  let med = null;
   if (level.calibrate) {
     const ds = ch.hit.filter(h => h != null).sort((a, b) => a - b);
     if (ds.length >= 6) {
-      const med = ds[Math.floor(ds.length / 2)];
-      if (Math.abs(med) > 0.02) setCalib(getCalib() + med);
+      med = ds[Math.floor(ds.length / 2)];
       const { early, late } = tolerance();
       hits = ds.filter(d => d - med >= -early && d - med <= late).length;
     }
   }
-  const good = hits / n >= 0.75;
+  // Raak = genoeg nootjes op tijd én niet te veel extra tikken (anders werkt "heel snel tikken" altijd).
+  const allowedExtra = Math.max(1, Math.floor(n * 0.25));
+  const tooMany = ch.extra > allowedExtra;
+  const good = hits / n >= 0.75 && !tooMany;
+  // Microfoonvertraging alleen bijstellen op een nette ronde, niet op wild getik.
+  if (good && med != null && Math.abs(med) > 0.02) setCalib(getCalib() + med);
+  // Systematisch te vroeg/laat? (niet in Hartslag: daar meten we juist de vertraging)
+  let bias = '';
+  const ds = ch.hit.filter(h => h != null).sort((a, b) => a - b);
+  if (!level.calibrate && ds.length >= 3) {
+    const m = ds[Math.floor(ds.length / 2)];
+    bias = m < -0.08 ? 'early' : m > 0.11 ? 'late' : '';
+  }
+  const fb = feedbackText({ good, hits: ch.hit.filter(h => h != null).length, n, extra: ch.extra, extraInLong: ch.extraInLong, bias, tooMany });
   ch = null;
   state = 'between';
   const prev = results.find(r => r.k === c.k);
   if (prev) prev.good = prev.good || good; else results.push({ k: c.k, good });
-  if (good) {
-    $('rpMsg').textContent = pick(HAPPY);
-    $('rpStars').textContent += '⭐';
-  } else {
-    if (!c.retry && level.type === 'echo') { queue.push({ ...c, retry: true }); $('rpMsg').textContent = pick(AGAIN); }
-    else $('rpMsg').textContent = 'Goed geprobeerd! 😊';
-  }
-  setTimeout(() => { if (state === 'between') nextChallenge(0.2); }, 1700);
+  if (good) $('rpStars').textContent += '⭐';
+  else if (!c.retry && level.type === 'echo') { queue.push({ ...c, retry: true }); fb.tip += ' Hij komt zo nog een keer.'; }
+  $('rpMsg').innerHTML = `${fb.text}${fb.tip ? `<div class="tip">${fb.tip}</div>` : ''}`;
+  setTimeout(() => { if (state === 'between') nextChallenge(0.2); }, fb.tip ? 3200 : 1800);
 }
 
 function finishRound() {
@@ -246,24 +298,31 @@ function finishRound() {
   const need = Math.max(1, Math.round(results.length * 0.7));
   const passed = good >= need;
   const out = progress.recordRun(level.id, passed, { sticker: level.sticker, log: { goodCount: good, total: results.length } });
+  // Een heel rondje (goed of niet) telt als opwarmen: dan gaat vandaag het liedje open.
+  const justWarmed = progress.settings().rules && progress.markWarmup();
   const idx = LEVELS.indexOf(level);
   const next = LEVELS[idx + 1];
   const btns = [{ label: 'Nog een keer', action: () => onStartButton() }];
-  if (passed && next) btns.push({ label: `Volgende: ${next.icon}`, primary: true, action: () => enterLevel(next.id) });
+  if (justWarmed) btns.push({ label: '🔑 Naar het liedje!', primary: true, action: () => go('liedje') });
+  if (passed && next) btns.push({ label: `Volgende: ${next.icon}`, primary: !justWarmed, action: () => enterLevel(next.id) });
   btns.push({ label: 'Naar de levels', action: () => go('ritme') });
+  const extras = [];
+  if (justWarmed) extras.push('🔑 Opgewarmd! Het liedje is open.');
+  if (out.newlyPassed && level.id === UNLOCK_TEMPO) extras.push('🎵 Nieuw: je mag het liedje nu "Met maat" spelen!');
+  const extra = extras.length ? Object.assign(document.createElement('div'), { className: 'unlockNote', innerHTML: extras.join('<br>') }) : null;
   if (passed) {
     celebrate({
       emoji: out.newlyGold ? '🥇' : level.icon, party: true,
       title: out.newlyGold ? 'GOUD! Wat ben jij goed!' : out.newlyPassed ? 'Level gehaald!' : 'Weer gelukt!',
       text: out.newlyGold ? 'Je kunt dit nu echt. Op naar het volgende avontuur!'
           : progress.levelStatus(level.id) === 'gold' ? 'Je bent een ritme-kampioen!' : 'Speel hem nog eens op een andere dag voor goud 🥇',
-      stickers: out.stickers, buttons: btns,
+      extra, stickers: out.stickers, buttons: btns,
     });
   } else {
     celebrate({
-      emoji: '😊', title: 'Goed geoefend!',
-      text: good > 0 ? `Je hebt ${'⭐'.repeat(good)} gevangen. Nog een rondje? Je bent er bijna!` : 'Nog een rondje? Samen lukt het!',
-      stickers: out.stickers, buttons: btns,
+      emoji: '💪', title: 'Nog niet gehaald',
+      text: `${good} van de ${results.length} beurten goed. Je hebt er ${need} nodig. Nog een rondje?`,
+      extra, stickers: out.stickers, buttons: btns,
     });
   }
 }
