@@ -1,6 +1,6 @@
 // Ritme-echo: ritme leren in kleine stapjes, op één toets (welke toets maakt niet uit).
 // Volgorde volgt muziekdidactiek: eerst de tel voelen, dan nadoen (echo), dan het ritme van het liedje.
-import { ensureAudio, click, tone, stopScheduled, now } from '../audio.js';
+import { ensureAudio, ensureRunning, click, tone, stopScheduled, now } from '../audio.js';
 import { onNote, startMic, getCalib, setCalib } from '../mic.js';
 import { notes, PHRASES } from '../song.js';
 import * as progress from '../progress.js';
@@ -114,8 +114,18 @@ function stopRound() {
 
 export async function onStartButton() {
   ensureAudio();
+  if (state === 'starting') return;                      // al bezig met starten (dubbele tik)
   if (state !== 'idle') { stopRound(); $('rpMsg').textContent = 'Gestopt. Druk op START om opnieuw te beginnen.'; return; }
+  state = 'starting';
+  $('rpMsg').textContent = '🎤 Even de microfoon aanzetten…';
   await startMic();
+  const running = await ensureRunning();
+  if (state !== 'starting') return;                     // intussen weggegaan of gestopt
+  if (!running) {
+    state = 'idle';
+    $('rpMsg').textContent = '👆 Tik nog een keer op START';
+    return;
+  }
   results = [];
   if (level.type === 'echo') {
     let list = level.challenges.map((ev, k) => ({ ev, k }));

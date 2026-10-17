@@ -17,6 +17,24 @@ export function ensureAudio() {
   return ac;
 }
 
+// iOS kan de geluidsklok pauzeren (bv. als de microfoon aangaat): dan staat currentTime stil en
+// telt er niets af. Probeer hem weer te laten lopen; geeft true als de klok loopt.
+export async function ensureRunning(timeoutMs = 800) {
+  ensureAudio();
+  if (ac.state === 'running') return true;
+  try { await Promise.race([ac.resume(), new Promise(r => setTimeout(r, timeoutMs))]); } catch (e) {}
+  return ac.state === 'running';
+}
+
+// Waakhond: loopt de klok nog? (vergelijkt met de gewone klok van de browser)
+let lastAudioT = -1, lastWall = 0;
+export function clockStalled() {
+  if (!ac) return false;
+  const t = ac.currentTime, w = performance.now();
+  if (t !== lastAudioT) { lastAudioT = t; lastWall = w; return false; }
+  return w - lastWall > 600;
+}
+
 function track(src, end) { scheduled.push({ src, end }); }
 export function stopScheduled() {
   const t = now();

@@ -1,5 +1,5 @@
 // Regie: schermen wisselen, startscherm, stickerboek, ouderscherm, en de beeld-lus.
-import { ensureAudio } from './audio.js';
+import { ensureAudio, clockStalled } from './audio.js';
 import { poll, startMic, setStatus, DEBUG, getCalib, resetCalib } from './mic.js';
 import * as progress from './progress.js';
 import * as ritme from './games/ritme.js';
@@ -113,7 +113,14 @@ $('micBtn').addEventListener('click', async () => {
 });
 
 // ===================== Beeld-lus =====================
+let stallShown = false;
 function step() {
+  // Staat de geluidsklok stil tijdens het spelen (iOS)? Vraag om een tik: elke tik maakt het geluid weer los.
+  const playing = (current === 'ritmeplay' && ['running', 'between'].includes(ritme._test.state)) ||
+                  (current === 'liedje' && ['countin', 'playing'].includes(liedje._test.state));
+  const stalled = playing && clockStalled();
+  if (stalled && !stallShown) { setStatus('👆 Tik op het scherm om verder te gaan'); stallShown = true; }
+  if (!stalled && stallShown) { setStatus(''); stallShown = false; }
   poll();
   if (current === 'ritmeplay') ritme.tick();
   if (current === 'liedje') liedje.tick();

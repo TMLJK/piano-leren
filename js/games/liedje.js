@@ -1,6 +1,6 @@
 // Het liedje: Luister / Wacht op mij / Met maat. Vriendelijk: geen rode kruisjes, "Oeps, geeft niks!".
 import { notes, LINES, STYLE, BEATS_PER_MEASURE, PICKUP_POS, TOTAL_BEATS, countLabel } from '../song.js';
-import { ensureAudio, click, tone, stopScheduled, now, getAC } from '../audio.js';
+import { ensureAudio, ensureRunning, click, tone, stopScheduled, now, getAC } from '../audio.js';
 import { onNote, startMic, micReady, setStatus, DEBUG, emit } from '../mic.js';
 import { buildKeyboard } from '../keyboard.js';
 import * as progress from '../progress.js';
@@ -308,6 +308,7 @@ function releaseAwake() { try { wakeLock && wakeLock.release(); } catch (e) {} w
 
 async function begin() {
   if (mode !== 'listen') await startMic();
+  await ensureRunning();
   keepAwake();
   cur = 0; firstTry = true; wrongPresses = 0; wrongStreak = 0;
   clearMarks();
