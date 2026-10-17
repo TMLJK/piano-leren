@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Keyboard-stickers</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { font-family: -apple-system, "Avenir Next", Helvetica, sans-serif; }
+  svg { display: block; width: 210mm; height: 297mm; }
+  @media screen { body { background: #ddd; } svg { margin: 10px auto; background: #fff; box-shadow: 0 2px 12px #0003; } }
+</style>
+</head>
+<body>
+<svg id="sheet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297"></svg>
+<script>
+// Alle maten in millimeters (viewBox = A4). Kleuren identiek aan de app (index.html → STYLE).
+const NOTES = [
+  ['C', '#E53935', '#fff'], ['D', '#EF6C00', '#fff'], ['E', '#FDD835', '#222'], ['F', '#43A047', '#fff'],
+  ['G', '#00ACC1', '#fff'], ['A', '#7E57C2', '#fff'], ['B', '#AD1457', '#fff'], ['C', '#E53935', '#fff'],
+];
+const BES = ['Bes', '#F48FB1', '#222'];
+const svg = document.getElementById('sheet');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, a, text) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in a) e.setAttribute(k, a[k]);
+  if (text != null) e.textContent = text;
+  svg.appendChild(e);
+  return e;
+};
+const txt = (x, y, size, s, extra = {}) => el('text', { x, y, 'font-size': size, 'font-family': 'Helvetica, Arial, sans-serif', ...extra }, s);
+
+function dot(cx, cy, d, [label, fill, ink]) {
+  el('circle', { cx, cy, r: d / 2 + 0.6, fill: 'none', stroke: '#999', 'stroke-width': 0.2, 'stroke-dasharray': '1 1' }); // knipcirkel
+  el('circle', { cx, cy, r: d / 2, fill, stroke: '#0003', 'stroke-width': 0.25 });
+  const size = label.length > 1 ? d * 0.36 : d * 0.55;
+  txt(cx, cy + size * 0.36, size, label, { fill: ink, 'font-weight': 800, 'text-anchor': 'middle' });
+}
+
+function row(y, white, black, step) {
+  const x0 = 22;
+  NOTES.forEach((n, i) => dot(x0 + i * step, y, white, n));
+  dot(x0 + 7 * step + step * 1.05, y, black, BES);
+}
+
+// Kop + schaalcontrole
+txt(14, 16, 6, 'Keyboard-stickers: We Wish You a Merry Christmas', { 'font-weight': 700, fill: '#B71C1C' });
+txt(14, 23, 3.4, 'Print op 100% / "Ware grootte" (niet "Passend maken"). Controle: de lijn hieronder moet precies 10 cm zijn.', { fill: '#444' });
+el('line', { x1: 14, x2: 114, y1: 28, y2: 28, stroke: '#222', 'stroke-width': 0.5 });
+el('line', { x1: 14, x2: 14, y1: 26, y2: 30, stroke: '#222', 'stroke-width': 0.5 });
+el('line', { x1: 114, x2: 114, y1: 26, y2: 30, stroke: '#222', 'stroke-width': 0.5 });
+txt(118, 29.2, 3.4, '10 cm', { fill: '#444' });
+
+// Set 1: groot (witte toets 16 mm, zwarte toets 9 mm) — 3 rijen
+txt(14, 40, 4, 'Groot: witte toetsen Ø 16 mm, zwarte toets Ø 9 mm', { 'font-weight': 700, fill: '#222' });
+[54, 77, 100].forEach(y => row(y, 16, 9, 21));
+
+// Set 2: klein (witte toets 13 mm, zwarte toets 7 mm) — voor als de grote te breed zijn
+txt(14, 124, 4, 'Klein: witte toetsen Ø 13 mm, zwarte toets Ø 7 mm', { 'font-weight': 700, fill: '#222' });
+[137, 156, 175].forEach(y => row(y, 13, 7, 21));
+
+// Uitleg plakken
+const lines = [
+  'Zo plak je ze:',
+  '1. Zoek de middelste C: op dit keyboard (61 toetsen) is dat de 3e C van links.',
+  '    Een C is de witte toets direct links van een groepje van 2 zwarte toetsen.',
+  '2. Plak vanaf die C naar rechts: C · D · E · F · G · A · B · C (8 witte toetsen).',
+  '3. Plak "Bes" op de zwarte toets tussen A en B (de meest rechtse van het groepje van 3).',
+  '4. Plak de stip op het voorste deel van de toets, goed zichtbaar, met helder plakband eroverheen.',
+  'Kies de maat: stip = ongeveer toetsbreedte min 5 mm. Meet even een witte en een zwarte toets.',
+];
+lines.forEach((s, i) => txt(14, 196 + i * 6.2, 3.6, s, { fill: '#333', 'font-weight': i === 0 ? 700 : 400 }));
+
+// Mini-schema van het octaaf
+const kx = 14, ky = 243, kw = 13, kh = 38;
+const order = [0, 1, 2, 3, 4, 5, 6, 7];
+order.forEach(i => {
+  el('rect', { x: kx + i * kw, y: ky, width: kw, height: kh, fill: '#fff', stroke: '#222', 'stroke-width': 0.4 });
+  const [label, fill, ink] = NOTES[i];
+  el('circle', { cx: kx + i * kw + kw / 2, cy: ky + kh - 7, r: 4.2, fill });
+  txt(kx + i * kw + kw / 2, ky + kh - 5.6, 4, label, { fill: ink, 'font-weight': 800, 'text-anchor': 'middle' });
+});
+[[1, 0], [2, 0], [4, 0], [5, 0], [6, 1]].forEach(([after, bes]) => {
+  const x = kx + after * kw - 4;
+  el('rect', { x, y: ky, width: 8, height: 23, fill: '#111' });
+  if (bes) {
+    el('circle', { cx: x + 4, cy: ky + 18, r: 3, fill: BES[1] });
+    txt(x + 4, ky + 19.1, 2.6, 'Bes', { fill: BES[2], 'font-weight': 800, 'text-anchor': 'middle' });
+  }
+});
+txt(kx + kw / 2, ky + kh + 6, 3.4, '↑ middelste C', { fill: '#333', 'text-anchor': 'start' });
+txt(kx + 8 * kw + 8, ky + 14, 3.6, 'Zo komen de stickers te zitten', { fill: '#333', 'font-weight': 700 });
+txt(kx + 8 * kw + 8, ky + 20, 3.4, '(één octaaf: van de middelste C', { fill: '#333' });
+txt(kx + 8 * kw + 8, ky + 25, 3.4, 'tot en met de C erboven)', { fill: '#333' });
+</script>
+</body>
+</html>
